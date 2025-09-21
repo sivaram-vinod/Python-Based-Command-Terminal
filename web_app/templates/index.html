@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>PyTerminal — Demo UI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            --bg: #0f1724;
+            --card: #0b1220;
+            --muted: #9aa4b2;
+            --accent: #5eead4;
+            --accent-2: #7dd3fc;
+            --danger: #fb7185;
+            --radius: 12px;
+            --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace;
+            color-scheme: dark;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background: var(--bg);
+            color: #e6eef6;
+            font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        }
+
+        h1 {
+            margin: 0 0 10px;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .control-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .cmd-input {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: var(--radius);
+            background: #1e293b;
+            color: #fff;
+            font-family: var(--mono);
+            font-size: 14px;
+            outline: none;
+        }
+
+        button {
+            padding: 10px 14px;
+            border: none;
+            border-radius: var(--radius);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+            color: #021;
+        }
+
+        .btn-ghost {
+            background: #1e293b;
+            color: var(--muted);
+        }
+
+        .status {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .output {
+            background: #031324;
+            padding: 12px;
+            border-radius: var(--radius);
+            min-height: 200px;
+            font-family: var(--mono);
+            font-size: 13px;
+            white-space: pre-wrap;
+            overflow: auto;
+        }
+
+        .quicklist {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 10px 0;
+        }
+
+        .chip {
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #1e293b;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .chip:hover {
+            color: #fff;
+        }
+
+        .history {
+            max-height: 150px;
+            overflow: auto;
+            font-size: 13px;
+        }
+
+        .history-item {
+            padding: 4px 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+        }
+
+        .history-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .error {
+            color: var(--danger);
+            margin-top: 8px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>PyTerminal</h1>
+
+    <div class="card">
+        <form id="cmdform" class="control-row">
+            <input id="cmd" class="cmd-input" type="text" placeholder="e.g. ls" />
+            <button type="submit" class="btn-primary">Run</button>
+            <button type="button" id="clear" class="btn-ghost">Clear</button>
+        </form>
+        <div class="status">Status: <span id="statusText">idle</span></div>
+        <div class="quicklist" id="quickCmds">
+            <div class="chip">ls</div>
+            <div class="chip">pwd</div>
+            <div class="chip">cat pyterminal.py</div>
+            <div class="chip">mkdir demo_dir</div>
+            <div class="chip">rm -r demo_dir</div>
+            <div class="chip">ps</div>
+            <div class="chip">sys</div>
+        </div>
+        <div id="out" class="output">Output will appear here.</div>
+        <div id="err" class="error" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+        <h3>History</h3>
+        <div id="history" class="history"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('cmdform');
+        const input = document.getElementById('cmd');
+        const out = document.getElementById('out');
+        const statusText = document.getElementById('statusText');
+        const errBox = document.getElementById('err');
+        const clearBtn = document.getElementById('clear');
+        const historyEl = document.getElementById('history');
+        const quickCmds = document.getElementById('quickCmds');
+        let history = [];
+
+        function setStatus(s) { statusText.textContent = s; }
+        function addHistory(cmd) {
+            history.unshift(cmd);
+            if (history.length > 20) history.pop();
+            renderHistory();
+        }
+        function renderHistory() {
+            historyEl.innerHTML = '';
+            history.forEach(cmd => {
+                const div = document.createElement('div');
+                div.className = 'history-item';
+                div.textContent = cmd;
+                div.onclick = () => { input.value = cmd; input.focus(); };
+                historyEl.appendChild(div);
+            });
+        }
+
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            errBox.style.display = 'none';
+            const cmd = input.value.trim();
+            if (!cmd) { out.textContent = '(no command)'; return; }
+
+            setStatus('sending...');
+            try {
+                const body = new URLSearchParams({ cmd });
+                const response = await fetch('/run', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' },
+                    body
+                });
+                let json = await response.json();
+                if (response.ok && json && 'output' in json) {
+                    out.textContent = json.output || '(no output)';
+                    setStatus('ok');
+                    addHistory(cmd);
+                } else {
+                    out.textContent = '(server error) ' + (json.output || '');
+                    setStatus('error');
+                    errBox.textContent = 'Server error: ' + (json.output || '');
+                    errBox.style.display = 'block';
+                }
+            } catch (err) {
+                console.error(err);
+                setStatus('failed');
+                errBox.textContent = 'Client error: ' + err.message;
+                errBox.style.display = 'block';
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            out.textContent = ''; input.value = ''; setStatus('idle');
+            errBox.style.display = 'none';
+        });
+
+        quickCmds.addEventListener('click', e => {
+            const chip = e.target.closest('.chip');
+            if (chip) { input.value = chip.textContent.trim(); input.focus(); }
+        });
+
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                form.requestSubmit();
+            }
+        });
+
+        if (location.protocol === 'file:') {
+            errBox.style.display = 'block';
+            errBox.textContent = 'Warning: page loaded from file:// — open via http://127.0.0.1:5000';
+            setStatus('wrong origin');
+        }
+    </script>
+</body>
+
+</html>
