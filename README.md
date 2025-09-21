@@ -15,7 +15,7 @@ Built for **SRM Hacks with CodeMate**.
 
 1. Clone the repo:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/pyterminal-hack.git
+   git clone https://github.com/sivaram-vinod/Python-Based-Command-Terminal.git
    cd pyterminal-hack
 
 
